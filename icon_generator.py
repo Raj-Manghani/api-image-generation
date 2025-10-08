@@ -217,7 +217,7 @@ def display_image(window, image_data):
             sg.popup_error(f"Error displaying image: {e}")
     else:
         # Clear the image area if there's no image data
-        window["-IMAGE-"].update(data=None, size=(400,400), background_color='lightgray')
+        window["-IMAGE-"].update(data=None)
 
 def generation_worker(window, unit, api_key, prompt):
     """Worker function to generate a single image in a thread."""
