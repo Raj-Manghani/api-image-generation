@@ -11,32 +11,25 @@ from google.generativeai import types
 # --- API INTEGRATION ---
 
 def generate_image_from_api(api_key, prompt):
-    """Generates an image using the Google Gemini API (Imagen model) and returns image bytes."""
-    print(f"Attempting to generate image with prompt: '{prompt[:50]}...'")
+    """Generates an image using the Google Gemini API and returns image bytes."""
     try:
-        print("  - Configuring genai client...")
-        client = genai.Client(api_key=api_key)
-        print("  - Calling API to generate images...")
-        response = client.models.generate_images(
-            model='imagen-4.0-generate-001',
-            prompt=prompt,
-            config=types.GenerateImagesConfig(number_of_images=1)
-        )
-        print("  - API call complete.")
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel('gemini-pro-vision')
 
-        if response.generated_images:
-            print("  - Image successfully generated.")
-            pil_image = response.generated_images[0].image
-            img_byte_arr = io.BytesIO()
-            pil_image.save(img_byte_arr, format='PNG')
-            return img_byte_arr.getvalue(), None
+        full_prompt = f"Generate a high-quality, professional icon based on the following description: {prompt}"
+
+        response = model.generate_content(full_prompt, stream=False)
+        response.resolve()
+
+        if response.parts and hasattr(response.parts[0], 'inline_data'):
+            image_data = response.parts[0].inline_data.data
+            return image_data, None
         else:
-            print("  - API returned no images.")
-            return None, "API returned no images."
+            error_text = response.text if hasattr(response, 'text') else "No image data returned from API."
+            return None, error_text
 
     except Exception as e:
-        print(f"  - An API error occurred: {e}")
-        return None, f"An API error occurred: {e}"
+        return None, f"An unhandled API error occurred: {e}"
 
 
 # --- UI LAYOUT ---
@@ -234,10 +227,8 @@ def display_image(window, image_data):
 
 def generation_worker(window, unit, api_key, prompt):
     """Worker function to generate a single image in a thread."""
-    print(f"Starting worker for unit: {unit['unit_name']}")
     image_data, error = generate_image_from_api(api_key, prompt)
 
-    print(f"Worker for {unit['unit_name']} finished. Error: {error is not None}")
     # Send result back to the main thread
     window.write_event_value(("-WORKER-DONE-", (unit['unit_name'], image_data, error, prompt)))
     return
@@ -379,7 +370,6 @@ def main():
             executor.submit(generation_worker, window, unit, api_key, final_prompt)
 
         elif event == "-START-":
-            print("'-START-' event triggered.")
             if not api_key:
                 sg.popup_error("Please enter your Gemini API key.")
                 continue
@@ -388,8 +378,6 @@ def main():
             if not pending_units:
                 sg.popup("No pending units to generate.")
                 continue
-
-            print(f"Found {len(pending_units)} pending units.")
 
             batch_size_str = values.get("-BATCH-SIZE-", "5")
             try:
@@ -402,8 +390,6 @@ def main():
             total_batch_jobs = len(pending_units)
             completed_batch_jobs = 0
 
-            print(f"Starting batch generation with batch size: {batch_size}")
-            # Show and reset progress bar
             window['-PROGRESS-FRAME-'].update(visible=True)
             window['-PROGRESS-'].update(0, max=total_batch_jobs)
             window['-PERCENT-'].update("0%", visible=True)
@@ -415,11 +401,9 @@ def main():
             for unit in pending_units:
                 active_workers += 1
                 prompt = templates.get(template, "").format(unit_name=unit['unit_name'])
-                print(f"Submitting worker for unit: {unit['unit_name']}")
                 executor.submit(generation_worker, window, unit, api_key, prompt)
 
         elif event == ("-WORKER-DONE-"):
-            print("'-WORKER-DONE-' event received.")
             active_workers -= 1
             completed_batch_jobs += 1
             unit_name, image_data, error, prompt = values[event]
