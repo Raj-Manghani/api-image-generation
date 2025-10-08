@@ -14,22 +14,20 @@ def generate_image_from_api(api_key, prompt):
     """Generates an image using the Google Gemini API and returns image bytes."""
     try:
         genai.configure(api_key=api_key)
-        # Use the correct model for image generation
-        model = genai.GenerativeModel('gemini-2.5-flash-image')
+        model = genai.GenerativeModel('models/gemini-1.5-flash-latest')
 
-        # The prompt for image generation is a simple text string
         response = model.generate_content(prompt)
 
-        # The image data is in the first part of the first candidate's content
         if response.candidates and response.candidates[0].content.parts:
-            image_part = response.candidates[0].content.parts[0]
-            if hasattr(image_part, 'inline_data') and image_part.inline_data.data:
-                return image_part.inline_data.data, None
+            first_part = response.candidates[0].content.parts[0]
+            if hasattr(first_part, 'inline_data') and first_part.inline_data.data:
+                return first_part.inline_data.data, None
 
-        # If no image data is found, return an error
         error_text = "No image data was returned from the API. The prompt may have been blocked."
         if hasattr(response, 'prompt_feedback') and response.prompt_feedback.block_reason:
             error_text += f" Reason: {response.prompt_feedback.block_reason.name}"
+        if hasattr(response, 'text'):
+            error_text += f" API returned text: {response.text}"
         return None, error_text
 
     except Exception as e:
