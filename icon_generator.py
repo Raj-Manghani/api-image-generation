@@ -14,19 +14,23 @@ def generate_image_from_api(api_key, prompt):
     """Generates an image using the Google Gemini API and returns image bytes."""
     try:
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel('gemini-pro-vision')
+        # Use the correct model for image generation
+        model = genai.GenerativeModel('gemini-2.5-flash-image')
 
-        full_prompt = f"Generate a high-quality, professional icon based on the following description: {prompt}"
+        # The prompt for image generation is a simple text string
+        response = model.generate_content(prompt)
 
-        response = model.generate_content(full_prompt, stream=False)
-        response.resolve()
+        # The image data is in the first part of the first candidate's content
+        if response.candidates and response.candidates[0].content.parts:
+            image_part = response.candidates[0].content.parts[0]
+            if hasattr(image_part, 'inline_data') and image_part.inline_data.data:
+                return image_part.inline_data.data, None
 
-        if response.parts and hasattr(response.parts[0], 'inline_data'):
-            image_data = response.parts[0].inline_data.data
-            return image_data, None
-        else:
-            error_text = response.text if hasattr(response, 'text') else "No image data returned from API."
-            return None, error_text
+        # If no image data is found, return an error
+        error_text = "No image data was returned from the API. The prompt may have been blocked."
+        if hasattr(response, 'prompt_feedback') and response.prompt_feedback.block_reason:
+            error_text += f" Reason: {response.prompt_feedback.block_reason.name}"
+        return None, error_text
 
     except Exception as e:
         return None, f"An unhandled API error occurred: {e}"
