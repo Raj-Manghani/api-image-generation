@@ -43,6 +43,11 @@ def create_main_window():
         [sg.Text("Skipped:", size=(12, 1)), sg.Text("0", key="-SKIPPED-")],
     ])
 
+    progress_bar_frame = sg.Frame("Generation Progress", [
+        [sg.ProgressBar(100, orientation='h', size=(20, 20), key='-PROGRESS-', visible=False), sg.Text("0%", key="-PERCENT-", visible=False)]
+    ], visible=False, key="-PROGRESS-FRAME-")
+
+
     unit_list_frame = sg.Frame("Unit Progress", [
         [sg.Table(
             values=[],
@@ -59,6 +64,7 @@ def create_main_window():
 
     left_col = sg.Column([
         [stats_frame],
+        [progress_bar_frame],
         [unit_list_frame]
     ])
 
@@ -237,6 +243,8 @@ def main():
     generated_images = {}  # In-memory cache for generated image data
     executor = concurrent.futures.ThreadPoolExecutor(max_workers=10)
     active_workers = 0
+    total_batch_jobs = 0
+    completed_batch_jobs = 0
 
     window = create_main_window()
 
@@ -379,8 +387,15 @@ def main():
                 sg.popup_error("Batch size must be an integer between 1 and 20.")
                 continue
 
+            total_batch_jobs = len(pending_units)
+            completed_batch_jobs = 0
+
+            # Show and reset progress bar
+            window['-PROGRESS-FRAME-'].update(visible=True)
+            window['-PROGRESS-'].update(0, max=total_batch_jobs)
+            window['-PERCENT-'].update("0%", visible=True)
+
             executor._max_workers = batch_size
-            sg.popup_quick_message(f"Starting batch generation for {len(pending_units)} units...", auto_close_duration=3)
             toggle_controls(True)
 
             template = values["-PROMPT-TEMPLATE-"]
@@ -391,24 +406,37 @@ def main():
 
         elif event == ("-WORKER-DONE-"):
             active_workers -= 1
+            completed_batch_jobs += 1
             unit_name, image_data, error, prompt = values[event]
             unit = next((u for u in project_state if u['unit_name'] == unit_name), None)
 
             if unit:
                 if error:
-                    print(f"Worker error for {unit_name}: {error}")
+                    sg.popup_error(f"Failed to generate image for '{unit_name}':\n\n{error}", title="Generation Error")
                 else:
                     generated_images[unit_name] = image_data
                     unit['final_prompt'] = prompt
                     save_project_state(project_state)
                     update_unit_table(window, project_state)
 
-                    if project_state[current_unit_index]['unit_name'] == unit_name:
+                    if current_unit_index != -1 and project_state[current_unit_index]['unit_name'] == unit_name:
                         display_image(window, image_data)
                         window["-CURRENT-UNIT-"].update(unit_name)
 
+            # Update progress bar
+            if total_batch_jobs > 0:
+                progress_percent = (completed_batch_jobs / total_batch_jobs) * 100
+                window['-PROGRESS-'].update(completed_batch_jobs)
+                window['-PERCENT-'].update(f"{progress_percent:.0f}%")
+
+
             if active_workers == 0:
                 toggle_controls(False)
+                # Hide progress bar when done
+                window['-PROGRESS-FRAME-'].update(visible=False)
+                window['-PERCENT-'].update(visible=False)
+                total_batch_jobs = 0
+                completed_batch_jobs = 0
 
     window.close()
     executor.shutdown(wait=False)
