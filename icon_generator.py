@@ -261,7 +261,8 @@ def main():
         window["-APPROVE-"].update(disabled=disabled)
         window["-REDO-"].update(disabled=disabled)
         window["-SKIP-"].update(disabled=disabled)
-        window["-UNIT-TABLE-"].update(disabled=disabled)
+        # The Table element does not support the 'disabled' parameter.
+        # window["-UNIT-TABLE-"].update(disabled=disabled)
         window.refresh()
 
     # --- Populate UI with loaded data ---
